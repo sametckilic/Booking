@@ -9,6 +9,7 @@ using Booking.Application.Interfaces.Repositories.MongoDb;
 using Booking.Application.Models.MongoDB;
 using Booking.Application.RequestModels.Reservation;
 using Booking.Application.ViewModels.Reservation;
+using Booking.Infrastructure.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using MongoDB.Bson;
 
@@ -28,6 +29,11 @@ namespace Booking.Application.Features
 
         public async Task<bool> DeleteReservationAsync(DeleteReservationRequest request)
         {
+            var reservation = await reservationRepository.FindByIdAsync(request.ReservationId);
+
+            if (reservation == null)
+                throw new DatabaseValidationException("The reservation not found!");
+
             await reservationRepository.DeleteOneAsync(x => x.Id == request.ReservationId);
 
             return true;
@@ -40,6 +46,7 @@ namespace Booking.Application.Features
                 var list = result.Select(i => new ReservationViewModel()
                 {
                     Id = i.Id,
+                    UserId = i.UserId,
                     CheckInDate = i.CheckInDate,
                     CheckOutDate = i.CheckOutDate,
                     CreateDate = i.CreateDate,

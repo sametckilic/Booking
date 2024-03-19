@@ -3,6 +3,9 @@ using Booking.Persistence.Extensions;
 using System.Text.Json.Serialization;
 using Booking.WebAPI.Extensions;
 using Serilog;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +32,9 @@ Log.Logger = new LoggerConfiguration()
         o.MinimumEventLevel = Serilog.Events.LogEventLevel.Error;
     }).CreateLogger();
 
+builder.Services.ConfigureAuth(builder.Configuration);
+
+builder.Services.AddAuthorization();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -57,11 +63,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.UseAuthorization();
-
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
-//app.ConfigureExceptionHandling(app.Environment.IsDevelopment());
+app.UseAuthentication();
+
+app.UseAuthorization();
 
 app.MapControllers();
 

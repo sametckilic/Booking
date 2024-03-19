@@ -3,6 +3,7 @@ using Booking.Application.Models.MongoDB;
 using Booking.Application.RequestModels.Reservation;
 using Booking.Application.ViewModels.Reservation;
 using Booking.Infrastructure.Results;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -32,6 +33,7 @@ namespace Booking.WebAPI.Controllers
         }
 
         // asynchronously deletes reservation stored in collection
+        [Authorize]
        [HttpDelete]
        [Route("DeleteReservation")]
         public async Task<IActionResult> DeleteReservation(DeleteReservationRequest request)
@@ -44,6 +46,7 @@ namespace Booking.WebAPI.Controllers
         }
 
         // asynchronously updates reservation stored in collection
+        [Authorize]
         [HttpPut]
         [Route("UpdateReservation")]
         public async Task<IActionResult> UpdateReservation(UpdateReservationRequest request)

@@ -4,6 +4,7 @@ using Booking.Application.RequestModels.Hotel;
 using Booking.Application.ViewModels.Hotel;
 using Booking.Infrastructure.Enums;
 using Booking.Infrastructure.Results;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -58,6 +59,7 @@ namespace Booking.WebAPI.Controllers
 
 
         // Creates a hotel in the system using the provided hotel data.
+        [Authorize]
         [HttpPost]
         [Route("CreateHotel")]
         public async Task<IActionResult> CreateHotel(CreateHotelRequestModel request)
@@ -70,6 +72,7 @@ namespace Booking.WebAPI.Controllers
         }
 
         // Creates a hotel room in the system using provided datas
+        [Authorize]
         [HttpPost]
         [Route("Rooms/CreateRoom")]
         public async Task<IActionResult> CreateHotelRoom(CreateRoomRequestModel request)
@@ -83,6 +86,7 @@ namespace Booking.WebAPI.Controllers
 
 
         // Creates a reservation in the system using provided datas
+        [Authorize]
         [HttpPost]
         [Route("CreateReservation")]
         public async Task<IActionResult> CreateReservation(CreateReservationRequestModel request)
@@ -95,6 +99,8 @@ namespace Booking.WebAPI.Controllers
         }
 
 
+        // Updates hotel entity in the system
+        [Authorize]
         [HttpPut]
         [Route("UpdateHotel")]
         public async Task<IActionResult> UpdateHotel(UpdateHotelRequestModel request)
@@ -107,6 +113,8 @@ namespace Booking.WebAPI.Controllers
         }
 
 
+        //Deletes hotel entity in the system
+        [Authorize]
         [HttpDelete]
         [Route("DeleteHotel")]
         public async Task<IActionResult> DeleteHotel(DeleteHotelRequestModel request)

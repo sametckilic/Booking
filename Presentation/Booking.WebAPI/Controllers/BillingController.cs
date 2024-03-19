@@ -1,6 +1,7 @@
 ﻿using Booking.Application.Interfaces.Managers;
 using Booking.Application.ViewModels.Billing;
 using Booking.Infrastructure.Results;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -61,6 +62,7 @@ namespace Booking.WebAPI.Controllers
             return Ok(response);
         }
 
+        [Authorize]
         [HttpDelete]
         [Route("DeleteBillingPaymentsById")]
         public async Task<IActionResult> DeleteBillingPaymentsById(Guid id)

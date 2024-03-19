@@ -3,6 +3,7 @@ using Booking.Application.Models.MongoDB;
 using Booking.Application.RequestModels.User;
 using Booking.Application.ViewModels.User;
 using Booking.Infrastructure.Results;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -20,6 +21,8 @@ namespace Booking.WebAPI.Controllers
         {
             this.userManager = userManager;
         }
+
+
 
        // asynchronusly returns a list of all users
        [HttpGet]

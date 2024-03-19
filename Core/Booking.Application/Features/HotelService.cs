@@ -6,7 +6,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
+using Booking.Application.Caching;
 using Booking.Application.Interfaces.Managers;
+using Booking.Application.Interfaces.Queue;
 using Booking.Application.Interfaces.Repositories.EntityFramework;
 using Booking.Application.Interfaces.Repositories.Factory;
 using Booking.Application.Interfaces.Repositories.MongoDb;
@@ -16,6 +18,7 @@ using Booking.Application.RequestModels.Hotel;
 using Booking.Application.ViewModels.Hotel;
 using Booking.Domain.Models.SQLServer;
 using Booking.Infrastructure.Enums;
+using Booking.Infrastructure.Events;
 using Booking.Infrastructure.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
@@ -32,8 +35,10 @@ namespace Booking.Application.Features
         private readonly IBillingPaymentRepository billingPaymentRepository;
         private readonly IMongoRepository<Reservation> reservationRepository;
         private readonly IMongoRepository<User> userRepository;
+        private readonly ICacheService cacheService;
+        private readonly IRabbitmqFactory rabbitmqFactory;
 
-        public HotelService(IHotelRepository hotelRepository, IHotelRoomRepository hotelRoomRepository, IHotelRoomPriceRepository hotelRoomPriceRepository,IBillingPaymentRepository billingPaymentRepository, IMongoRepositoryFactory mongoRepositoryFactory)
+        public HotelService(IHotelRepository hotelRepository, IHotelRoomRepository hotelRoomRepository, IHotelRoomPriceRepository hotelRoomPriceRepository, IBillingPaymentRepository billingPaymentRepository, IMongoRepositoryFactory mongoRepositoryFactory, ICacheService cacheService, IRabbitmqFactory rabbitmqFactory)
         {
             this.hotelRepository = hotelRepository;
             this.hotelRoomRepository = hotelRoomRepository;
@@ -41,6 +46,8 @@ namespace Booking.Application.Features
             this.billingPaymentRepository = billingPaymentRepository;
             this.reservationRepository = mongoRepositoryFactory.GetRepo<Reservation>();
             this.userRepository = mongoRepositoryFactory.GetRepo<User>();
+            this.cacheService = cacheService;
+            this.rabbitmqFactory = rabbitmqFactory;
         }
 
         public async Task<bool> IsHotelRoomsAvailableByDates(IsRoomAvaliableRequestModel request)
@@ -59,16 +66,16 @@ namespace Booking.Application.Features
             return !existReservation.Any();
         }
 
-        public async Task<HotelViewModel> CreateHotel(string hotelName)
+        public async Task<HotelViewModel> CreateHotel(CreateHotelRequestModel request)
         {
-            var existHotel = await hotelRepository.FirstOrDefaultAsync(i => i.HotelName ==hotelName);
+            var existHotel = await hotelRepository.FirstOrDefaultAsync(i => i.HotelName == request.HotelName);
 
             if (existHotel != null)
                 throw new DatabaseValidationException("This hotel is aldready exists!");
 
             var hotel = new Hotel
             {
-                HotelName = hotelName
+                HotelName = request.HotelName
             };
 
             var result = await hotelRepository.AddAsync(hotel);
@@ -76,7 +83,7 @@ namespace Booking.Application.Features
             var hotelView = new HotelViewModel()
             {
                 Id = hotel.Id,
-                HotelName = hotelName,
+                HotelName = request.HotelName,
             };
 
             return hotelView;
@@ -116,13 +123,30 @@ namespace Booking.Application.Features
 
             var createdBillingPayment = await billingPaymentRepository.AddAsync(billingPayment);
 
+            var reservationEvent = new ReservationCreatedEvent()
+            {
+                Id = reservation.Id,
+                RoomId= reservation.RoomId,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email,
+                CheckInDate = reservation.CheckInDate,
+                CheckOutDate = reservation.CheckOutDate,
+                CreateDate = reservation.CreateDate
+
+            };
+
+            rabbitmqFactory.SendMessage<ReservationCreatedEvent>(message :reservationEvent, exchangeName: "Reservation",queueName :"ReservationQueue");
+
             return result;
         }
 
         public async Task<RoomsViewModel> CreateRoom(CreateRoomRequestModel request)
         {
-            var existHotel = await hotelRepository.GetByIdAsync(request.HotelId);
+            await cacheService.Clear("GetHotelRooms-"+request.HotelId);
 
+            var existHotel = await hotelRepository.GetByIdAsync(request.HotelId);
+            
             if (existHotel == null)
                 throw new DatabaseValidationException("The hotel not found!");
 
@@ -162,31 +186,37 @@ namespace Booking.Application.Features
 
         public async Task<HotelRoomsViewModel> GetHotelRooms(Guid hotelId)
         {
-            var query = hotelRepository.AsQueryable();
-
-            query = query.Where(i => i.Id == hotelId);
-
-            query = query.Include(i => i.HotelRooms).ThenInclude(i => i.HotelRoomPrices);
-
-
-            var result = await query.Select(i => new HotelRoomsViewModel()
+            var cacheResult = await cacheService.GetOrAddAsync<HotelRoomsViewModel>("GetHotelRooms-" + hotelId, async () =>
             {
-                HotelId = hotelId,
-                HotelName = i.HotelName,
-                Rooms = i.HotelRooms.SelectMany(x => x.HotelRoomPrices
-                                        .Where(y => y.HotelId == hotelId)
-                                        .Select(y => new RoomsViewModel()
-                                        {
-                                            RoomId = x.Id,
-                                            RoomPrice = y.Price,
-                                            RoomType = y.RoomType,
-                                        })).ToList()
-            }).FirstOrDefaultAsync();
+                var query = hotelRepository.AsQueryable();
 
-            if (result == null)
-                throw new DatabaseValidationException("The hotel or rooms not found!");
+                query = query.Where(i => i.Id == hotelId);
 
-            return result;
+                query = query.Include(i => i.HotelRooms).ThenInclude(i => i.HotelRoomPrices);
+
+
+                var result = await query.Select(i => new HotelRoomsViewModel()
+                {
+                    HotelId = hotelId,
+                    HotelName = i.HotelName,
+                    Rooms = i.HotelRooms.SelectMany(x => x.HotelRoomPrices
+                                            .Where(y => y.HotelId == hotelId)
+                                            .Select(y => new RoomsViewModel()
+                                            {
+                                                RoomId = x.Id,
+                                                RoomPrice = y.Price,
+                                                RoomType = y.RoomType,
+                                            })).ToList()
+                }).FirstOrDefaultAsync();
+
+                if (result == null)
+                    throw new DatabaseValidationException("The hotel or rooms not found!");
+
+                return result;
+            });
+
+            return cacheResult;
+
         }
 
         public async Task<List<HotelViewModel>> GetHotels()
@@ -261,9 +291,5 @@ namespace Booking.Application.Features
             return billingPayment;
         }
 
-        public Task<HotelViewModel> CreateHotel(CreateHotelRequestModel request)
-        {
-            throw new NotImplementedException();
-        }
     }
 }
